@@ -19,3 +19,5 @@ The Variant Annotation Tool is a web-based application for annotating genetic va
 
    ```bash
    git clone https://github.com/username/variant-annotation-tool.git
+
+2. pip install -r requirements.txt
