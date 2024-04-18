@@ -1,8 +1,24 @@
 import streamlit as st
 import pandas as pd
-from src import annotation, visualization
+from src import annotation, visualization, data_processing, database
+
+def load_css():
+    st.markdown(
+        """
+        <style>
+        body {
+            background-image: url('src/HD-wallpaper-mississippi-state-bulldogs.jpg');
+            background-size: cover;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 def main():
+    
+    load_css()
+    
     st.title("Variant Annotation Tool")
 
     # Upload VCF file
