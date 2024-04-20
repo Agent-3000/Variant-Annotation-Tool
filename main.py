@@ -2,22 +2,11 @@ import streamlit as st
 import pandas as pd
 from src import annotation, visualization, data_processing, database
 
-def load_css():
-    st.markdown(
-        """
-        <style>
-        body {
-            background-image: url('src/HD-wallpaper-mississippi-state-bulldogs.jpg');
-            background-size: cover;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
 
 def main():
-    
-    load_css()
+    # Load custom CSS
+    with open("src/style.css", "r") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     
     st.title("Variant Annotation Tool")
 
