@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from src import annotation, visualization, data_processing, database
 
+
 def main():
     # Load custom CSS
     with open("src/style.css", "r") as f:
@@ -9,21 +10,35 @@ def main():
 
     st.title("Variant Annotation Tool")
 
-    # Upload VCF file
-    st.sidebar.header("Upload VCF File")
-    vcf_file = st.sidebar.file_uploader("Upload VCF file", type=["vcf"])
+    # Upload VCF or CSV file
+    st.sidebar.header("Upload File")
+    uploaded_file = st.sidebar.file_uploader("Upload VCF or CSV file", type=["vcf", "csv"])
 
-    if vcf_file is not None:
+    if uploaded_file is not None:
+    # Check file type
+    if uploaded_file.type == "text/vcard":
         # Load VCF data
-        vcf_df = pd.read_csv(vcf_file, sep="\t", header=None)
+        vcf_df = pd.read_csv(uploaded_file, sep="\t", header=None)
         vcf_df.columns = ["CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE"]
+    elif uploaded_file.type == "text/csv":
+        # Load CSV data
+        csv_df = pd.read_csv(uploaded_file)
+    else:
+        st.error("Invalid file type. Please upload a VCF or CSV file.")
+        return
 
-        # Perform variant annotation
+    # Perform variant annotation (if VCF file)
+    if uploaded_file.type == "text/vcard":
         annotated_df = annotation.annotate_variants(vcf_df, ['allele_frequencies', 'pathogenicity_scores', 'clinical_annotations', 'gene_protein_info'])
-
         # Display annotated variants
         st.subheader("Annotated Variants")
         st.write(annotated_df)
+    else:
+        # Display CSV data
+        st.subheader("Uploaded CSV Data")
+        st.write(csv_df)
+
+    # ... (the rest of the code remains the same) ...
 
         # Filter and sort variants
         st.sidebar.header("Filter Variants")
