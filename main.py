@@ -17,7 +17,7 @@ def main():
 
     if vcf_file is not None:
         # Load VCF data
-        vcf_df = pd.read_csv(vcf_file, sep="\t", header=None)
+        vcf_df = pd.read_csv(vcf_file, sep="\t", header=None, skiprows=1)
         vcf_df.columns = ["CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE"]
 
         # Perform variant annotation
