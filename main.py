@@ -50,7 +50,8 @@ def main():
         elif visualization_type == "Scatter Plot":
             x_column = st.selectbox("Select column for x-axis", sorted_df.columns)
             y_column = st.selectbox("Select column for y-axis", sorted_df.columns)
-            hue_column = st.selectbox("Select column for color (optional)", sorted_df.columns + [None], index=len(sorted_df.columns))
+            columns_and_none = list(sorted_df.columns) + [None]
+            hue_column = st.selectbox("Select column for color (optional)", columns_and_none, index=len(sorted_df.columns))
             visualization.plot_variant_scatter(sorted_df, x_column, y_column, hue_column)
 
         # Export annotated variants
