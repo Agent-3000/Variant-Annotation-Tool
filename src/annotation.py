@@ -1,124 +1,99 @@
 import pandas as pd
-import allel
 import requests
-import xml.etree.ElementTree as ET
+from json import JSONDecodeError
+import time
+import io
 from Bio.Align import substitution_matrices
 from Bio.Seq import Seq
 from Bio import SeqIO
 
-
-# Allele Frequency Retrieval
 def get_allele_frequencies(variants, database):
-    """
-    Retrieve allele frequencies for the given variants from the specified database.
-    """
-    if database == 'gnomad':
-        # Query the gnomAD API for allele frequencies
-        for variant in variants:
-            chrom, pos, ref, alt = variant.CHROM, variant.POS, variant.REF, variant.ALT
-            url = f"https://gnomad.broadinstitute.org/variant/{chrom}-{pos}-{ref}-{alt}?dataset=gnomad_r4_1"
-            response = requests.get(url)
-            if response.ok:
-                data = response.json()
-                af = data.get('gnomad_exome_af', 0.0)
-                variant.set_annotations({'gnomad_af': af})
-
-    return variants
-
-# Pathogenicity Score Calculation
-def calculate_pathogenicity_scores(variants):
-    """
-    Calculate pathogenicity scores (e.g., SIFT, PolyPhen) for the given variants.
-    """
-    for variant in variants:
-        chrom, pos, ref, alt = variant.CHROM, variant.POS, variant.REF, variant.ALT
-        seq = get_sequence(chrom, pos - 100, pos + 100)  # Retrieve sequence around the variant
-        sift_score = calculate_sift_score(seq, pos, ref, alt)
-        polyphen_score = calculate_polyphen_score(seq, pos, ref, alt)
-        variant.set_annotations({'sift_score': sift_score, 'polyphen_score': polyphen_score})
-
-    return variants
-
-# Clinical Annotation Retrieval
-def get_clinical_annotations(variants, database):
-    """
-    Retrieve clinical annotations and disease associations for the given variants from the specified database.
-    """
-    if database == 'clinvar':
-        # Query the ClinVar API for clinical annotations
-        for variant in variants:
-            chrom, pos, ref, alt = variant.CHROM, variant.POS, variant.REF, variant.ALT
-            url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=clinvar&id={chrom}:{pos}:{ref}:{alt}"
-            response = requests.get(url)
-            if response.ok:
-                root = ET.fromstring(response.content)
-                clinical_significance = root.find('ClinicalSignificance/Description').text
-                variant.set_annotations({'clinvar_significance': clinical_significance})
-
-    return variants
-
-# Gene and Protein Information Lookup
-def get_gene_protein_info(variants, database):
-    """
-    Retrieve gene and protein information (e.g., gene names, transcript IDs, protein domains) for the given variants from the specified database.
-    """
     if database == 'ensembl':
-        # Query the Ensembl API for gene and protein information
+        server = "https://rest.ensembl.org"
+        ext = "/vep/human/hgvs"
+
         for variant in variants:
-            chrom, pos = variant.CHROM, variant.POS
-            url = f"https://rest.ensembl.org/overlap/region/{chrom}:{pos}-{pos}?feature=gene"
-            response = requests.get(url, headers={"Content-Type": "application/json"})
-            if response.ok:
-                data = response.json()
-                if data:
-                    gene_name = data[0]['external_name']
-                    transcript_id = data[0]['transcript_id']
-                    variant.set_annotations({'gene_name': gene_name, 'transcript_id': transcript_id})
+            chrom = variant.CHROM
+            if chrom.startswith("chr"):
+                chrom = chrom[3:]
+            pos = variant.POS
+            ref = variant.REF
+            alt = variant.ALT
+            
+            hgvs = f"{chrom}:g.{pos}{ref}>{alt}"
+            headers = { "Content-Type" : "application/json", "Accept" : "application/json"}
+            
+            r = requests.post(server+ext, headers=headers, data='{ "hgvs_notations" : ["'+hgvs+'" ]}')
+            if not r.ok:
+                r.raise_for_status()
+                sys.exit()
+
+            decode = r.json()
+            allele_freqs = decode[0]["colocated_variants"][0]["frequencies"]
+            variant.set_annotations({"allele_freqs": allele_freqs})
 
     return variants
 
-def calculate_sift_score(seq, pos, ref, alt):
-    # Convert DNA sequences to protein sequences
-    protein_seq = Seq(str(seq)).translate()
-    protein_ref = str(protein_seq[pos - 1])
-    protein_alt = str(Seq(str(alt)).translate())
-
-    # Calculate SIFT score using BLOSUM62 matrix
-    blosum62 = substitution_matrices.load("BLOSUM62")
-    sift_score = blosum62[(protein_ref, protein_alt)]
-
-    return sift_score
 
 def calculate_polyphen_score(seq, pos, ref, alt):
-    # Prepare data for PolyPhen server
-    protein_seq = Seq(str(seq)).translate()
-    protein_ref = str(protein_seq[pos - 1])
+    protein_seq = str(Seq(str(seq)).translate())
+    protein_ref = protein_seq[pos - 1]
     protein_alt = str(Seq(str(alt)).translate())
-    data = {
-        'sequence': str(protein_seq),
-        'position': pos,
-        'refaa': protein_ref,
-        'aaalt': protein_alt
-    }
 
-    # Send request to PolyPhen server
-    response = requests.get('http://genetics.bwh.harvard.edu/pph2/bgi.shtml', params=data)
-
-    # Extract PolyPhen score from response
-    polyphen_score = re.search(r'PolyPhen Score: ([\d.]+)', response.text)
-    if polyphen_score:
-        return float(polyphen_score.group(1))
+    url = f"http://genetics.bwh.harvard.edu/cgi-bin/pph2?query={protein_ref},{protein_alt}&query_aa=1&transcript_id={seq.id}&output_format=json"
+    response = requests.get(url)
+    if response.ok:
+        data = response.json()
+        polyphen_score = data['polyphen2_hdiv_score']
+        return polyphen_score
     else:
         return None
 
-# Helper function to retrieve sequence
-def get_sequence(chrom, start, end):
-    # Load the reference genome sequence from a FASTA file
-    with open('reference_genome.fa', 'r') as fasta_file:
-        sequences = SeqIO.to_dict(SeqIO.parse(fasta_file, 'fasta'))
+def annotate_variants(vcf_data, annotation_types):
+    vcf_df = pd.read_table(io.StringIO(vcf_data), comment='#', header=None)
 
-    # Extract the sequence for the given chromosome and coordinates
-    ref_seq = sequences[chrom].seq
-    sequence = str(ref_seq[start - 1:end])
+    num_cols = len(vcf_df.columns)
+    column_map = {
+        vcf_df.columns[0]: "CHROM",
+        vcf_df.columns[1]: "POS",
+        vcf_df.columns[2]: "ID",
+        vcf_df.columns[3]: "REF",
+        vcf_df.columns[4]: "ALT",
+    }
 
-    return sequence
+    # Add the rest of the columns to the dictionary if necessary
+    if num_cols > 5:
+        column_map[vcf_df.columns[5]] = "QUAL"
+    if num_cols > 6:
+        column_map[vcf_df.columns[6]] = "FILTER"
+    if num_cols > 7:
+        column_map[vcf_df.columns[7]] = "INFO"
+    if num_cols > 8:
+        column_map[vcf_df.columns[8]] = "FORMAT"
+    if num_cols > 9:
+        column_map[vcf_df.columns[9]] = "SAMPLE"
+
+    vcf_df = vcf_df.rename(columns=column_map)
+
+    variants = []
+    for _, row in vcf_df.iterrows():
+        variant = Variant()
+        variant.CHROM = row["CHROM"]
+        variant.POS = row["POS"]
+        variant.REF = row["REF"]
+        variant.ALT = row["ALT"]
+
+        if "allele_frequencies" in annotation_types:
+            get_allele_frequencies([variant], 'gnomad')
+
+        variants.append(variant)
+
+    return variants
+
+
+class Variant:
+    def __init__(self):
+        self.annotations = {}
+
+    def set_annotations(self, annotations):
+        self.annotations.update(annotations)

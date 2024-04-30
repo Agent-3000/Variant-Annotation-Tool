@@ -1,3 +1,4 @@
+import re
 import pandas as pd
 
 def filter_variants(variants, filters):
@@ -6,21 +7,31 @@ def filter_variants(variants, filters):
     
     Args:
         variants (pandas.DataFrame): DataFrame containing the annotated variants.
-        filters (dict): A dictionary containing the filter conditions.
+        filters (str or dict): A string or dictionary containing the filter conditions.
     
     Returns:
         pandas.DataFrame: DataFrame containing the filtered variants.
     """
     filtered_variants = variants.copy()
     
-    # Apply filters based on the provided conditions
-    for column, condition in filters.items():
-        if condition.startswith(('>=', '>', '<=', '<', '==')):
-            operator = condition[:2]
-            value = float(condition[2:])
-            filtered_variants = filtered_variants[eval(f'filtered_variants["{column}"] {operator} {value}')]
-        else:
-            filtered_variants = filtered_variants[filtered_variants[column].isin(condition.split(','))]
+    if isinstance(filters, str):
+        conditions = filters.split(',')
+        for condition in conditions:
+            if condition:
+                column, operator, value = re.split(r'(>=|>|<=|<|==)', condition)
+                column = column.strip()
+                operator = operator.strip()
+                value = float(value)
+                filtered_variants = filtered_variants[eval(f'filtered_variants["{column}"] {operator} {value}')]
+    else:
+        # Apply filters based on the provided conditions
+        for column, condition in filters.items():
+            if condition.startswith(('>=', '>', '<=', '<', '==')):
+                operator = condition[:2]
+                value = float(condition[2:])
+                filtered_variants = filtered_variants[eval(f'filtered_variants["{column}"] {operator} {value}')]
+            else:
+                filtered_variants = filtered_variants[filtered_variants[column].isin(condition.split(','))]
     
     return filtered_variants
 
@@ -36,6 +47,14 @@ def sort_variants(variants, sort_by, ascending=True):
     Returns:
         pandas.DataFrame: DataFrame containing the sorted variants.
     """
+    if isinstance(sort_by, str):
+        if sort_by:
+            sort_by = [col.strip() for col in sort_by.split(',') if col.strip()]
+        else:
+            sort_by = []
+    else:
+        sort_by = [col for col in sort_by if col]
+
     sorted_variants = variants.sort_values(by=sort_by, ascending=ascending)
     return sorted_variants
 

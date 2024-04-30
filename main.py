@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
-from src import annotation, visualization, data_processing, database
-
-
+from src import annotation, visualization, data_processing
 
 def main():
     # Load custom CSS
@@ -16,12 +14,15 @@ def main():
     vcf_file = st.sidebar.file_uploader("Upload VCF file", type=["vcf"])
 
     if vcf_file is not None:
-        # Load VCF data
-        vcf_df = pd.read_csv(vcf_file, sep="\t", header=None, skiprows=1)
-        vcf_df.columns = ["CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "SAMPLE"]
+        # Read VCF file content
+        vcf_content = vcf_file.getvalue().decode("utf-8")
 
         # Perform variant annotation
-        annotated_df = annotation.annotate_variants(vcf_df, ['allele_frequencies', 'pathogenicity_scores', 'clinical_annotations', 'gene_protein_info'])
+        annotation_types = ['allele_frequencies', 'pathogenicity_scores', 'clinical_annotations', 'gene_protein_info']
+        annotated_variants = annotation.annotate_variants(vcf_content, annotation_types)
+
+        # Convert annotated variants to a DataFrame
+        annotated_df = pd.DataFrame([vars(variant) for variant in annotated_variants])
 
         # Display annotated variants
         st.subheader("Annotated Variants")
